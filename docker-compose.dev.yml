@@ -1,0 +1,49 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      target: development
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://sms_user:sms_password@postgres:5432/sms_dev
+      - SECRET_KEY=jfoswBbwlCb9Bo8iE136bb4Bdmvf+xRcg7QtlP9MtgP8H7pvpPgwa7QtxBb41z3h6rgA4QIeSfBDdmTElyvTpg==
+      - ENV=development
+      - DEBUG=true
+    volumes:
+      - .:/app
+    depends_on:
+      - postgres
+    networks:
+      - sms-network
+
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_DB=sms_dev
+      - POSTGRES_USER=sms_user
+      - POSTGRES_PASSWORD=sms_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - sms-network
+
+  adminer:
+    image: adminer
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres
+    networks:
+      - sms-network
+
+volumes:
+  postgres_data:
+
+networks:
+  sms-network:
+    driver: bridge
