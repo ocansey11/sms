@@ -32,23 +32,7 @@ sms/
 ├── start-dev.bat          # Windows development starter
 ├── start-prod.bat         # Windows production starter
 └── README.md              # This file
-```
-│   ├── db/                # Database models & schemas
-│   ├── services/          # Business logic
-│   └── main.py           # FastAPI app entry point
-├── web/                   # Next.js frontend
-│   ├── src/
-│   │   ├── app/          # Next.js 15 App Router
-│   │   ├── components/   # React components
-│   │   ├── contexts/     # React contexts
-│   │   └── lib/          # Utilities & types
-│   └── package.json
-├── scripts/               # Database scripts
-├── docker-compose.dev.yml # Development environment
-├── .env.development       # Development environment variables
-├── .env.production        # Production environment variables
-└── .env.example          # Environment variables template
-```
+
 
 ## 🚀 Features
 
