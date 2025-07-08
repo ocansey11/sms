@@ -52,7 +52,8 @@ export default function LoginPage() {
   };
 
   const demoCredentials = [
-    { role: 'Teacher', email: 'teacher@schoolsms.com', password: 'teacher123' },
+    { role: 'Admin', email: 'admin@school.edu', password: 'admin123' },
+    { role: 'Teacher', email: 'sarah.johnson@teacher.schoolsms.com', password: 'teacher123' },
     { role: 'Student', email: 'emma.smith@student.schoolsms.com', password: 'student123' },
     { role: 'Guardian', email: 'john.smith@email.com', password: 'guardian123' },
   ];

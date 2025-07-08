@@ -13,6 +13,9 @@ export default function Home() {
     if (!isLoading && isAuthenticated && user) {
       // Redirect to appropriate dashboard based on user role
       switch (user.role) {
+        case 'admin':
+          router.push('/admin');
+          break;
         case 'teacher':
           router.push('/teacher/dashboard');
           break;
@@ -82,7 +85,20 @@ export default function Home() {
 
         {/* Features */}
         <div className="mt-16">
-          <div className="grid grid-cols-1 gap-8 md:grid-cols-3">
+          <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:grid-cols-4">
+            <div className="bg-white rounded-lg shadow-md p-6">
+              <div className="flex items-center justify-center h-12 w-12 rounded-md bg-red-500 text-white mx-auto">
+                <Shield className="h-6 w-6" />
+              </div>
+              <h3 className="mt-4 text-lg font-medium text-gray-900 text-center">
+                For Admins
+              </h3>
+              <p className="mt-2 text-base text-gray-500 text-center">
+                Manage users, create classes, oversee system operations, and
+                monitor school-wide activities.
+              </p>
+            </div>
+
             <div className="bg-white rounded-lg shadow-md p-6">
               <div className="flex items-center justify-center h-12 w-12 rounded-md bg-blue-500 text-white mx-auto">
                 <BookOpen className="h-6 w-6" />
