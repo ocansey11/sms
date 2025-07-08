@@ -4,7 +4,7 @@ from fastapi import HTTPException
 import structlog
 
 from app.db import crud, schemas
-from app.core.security import verify_password, get_password_hash
+from app.core.security import SecurityManager
 from app.exceptions.custom_exceptions import SMSException
 
 logger = structlog.get_logger()
@@ -13,11 +13,11 @@ class AuthService:
     """Authentication and authorization service"""
     
     @staticmethod
-    async def authenticate_user(db: AsyncSession, email: str, password: str) -> Optional[schemas.User]:
+    async def authenticate_user(db: AsyncSession, email: str, password: str) -> Optional[schemas.UserResponse]:
         """Authenticate user with email and password"""
         try:
             user = await crud.get_user_by_email(db, email=email)
-            if not user or not verify_password(password, user.hashed_password):
+            if not user or not SecurityManager.verify_password(password, user.password_hash):
                 return None
             return user
         except Exception as e:
@@ -25,7 +25,7 @@ class AuthService:
             return None
     
     @staticmethod
-    async def register_user(db: AsyncSession, user_create: schemas.UserCreate) -> schemas.User:
+    async def register_user(db: AsyncSession, user_create: schemas.UserCreate) -> schemas.UserResponse:
         """Register a new user"""
         try:
             # Check if user already exists
@@ -34,7 +34,7 @@ class AuthService:
                 raise SMSException("User already exists", "USER_EXISTS")
             
             # Hash password
-            user_create.password = get_password_hash(user_create.password)
+            user_create.password = SecurityManager.get_password_hash(user_create.password)
             
             # Create user
             user = await crud.create_user(db, user=user_create)
@@ -60,11 +60,11 @@ class AuthService:
                 raise SMSException("User not found", "USER_NOT_FOUND")
             
             # Verify current password
-            if not verify_password(current_password, user.hashed_password):
+            if not SecurityManager.verify_password(current_password, user.password_hash):
                 raise SMSException("Current password is incorrect", "INVALID_PASSWORD")
             
             # Update password
-            hashed_new_password = get_password_hash(new_password)
+            hashed_new_password = SecurityManager.get_password_hash(new_password)
             await crud.update_user_password(db, user_id=user_id, hashed_password=hashed_new_password)
             
             logger.info("Password updated successfully", user_id=user_id)
@@ -101,7 +101,7 @@ class UserService:
         role: str, 
         skip: int = 0, 
         limit: int = 100
-    ) -> List[schemas.User]:
+    ) -> List[schemas.UserResponse]:
         """Get users by role with pagination"""
         try:
             users = await crud.get_users_by_role(db, role=role, skip=skip, limit=limit)
@@ -115,7 +115,7 @@ class UserService:
         db: AsyncSession, 
         user_id: int, 
         profile_update: schemas.UserUpdate
-    ) -> schemas.User:
+    ) -> schemas.UserResponse:
         """Update user profile"""
         try:
             user = await crud.get_user_by_id(db, user_id=user_id)
@@ -145,7 +145,7 @@ class NotificationService:
     """Notification service for sending emails, SMS, etc."""
     
     @staticmethod
-    async def send_welcome_email(user: schemas.User) -> bool:
+    async def send_welcome_email(user: schemas.UserResponse) -> bool:
         """Send welcome email to new user"""
         try:
             # This would integrate with email service (SendGrid, AWS SES, etc.)
@@ -156,7 +156,7 @@ class NotificationService:
             return False
     
     @staticmethod
-    async def send_password_reset_email(user: schemas.User, reset_token: str) -> bool:
+    async def send_password_reset_email(user: schemas.UserResponse, reset_token: str) -> bool:
         """Send password reset email"""
         try:
             # This would integrate with email service
@@ -168,8 +168,8 @@ class NotificationService:
     
     @staticmethod
     async def send_attendance_notification(
-        guardian: schemas.User, 
-        student: schemas.User, 
+        guardian: schemas.UserResponse, 
+        student: schemas.UserResponse, 
         attendance_status: str
     ) -> bool:
         """Send attendance notification to guardian"""

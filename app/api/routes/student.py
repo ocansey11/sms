@@ -3,9 +3,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Optional
 import structlog
 
-from app.db.database import get_db
 from app.db import crud, schemas
-from app.api.dependencies import get_current_user, require_role, get_pagination_params
+from app.api.dependencies import get_current_user, require_role, get_pagination_params, get_db
 from app.exceptions.custom_exceptions import SMSException
 
 logger = structlog.get_logger()
@@ -14,7 +13,7 @@ router = APIRouter()
 # Student Profile Management
 @router.get("/profile", response_model=schemas.UserResponse)
 async def get_student_profile(
-    current_user: schemas.User = Depends(require_role(["student"])),
+    current_user: schemas.UserResponse = Depends(require_role(["student"])),
     db: AsyncSession = Depends(get_db)
 ):
     """Get current student's profile"""
@@ -23,7 +22,7 @@ async def get_student_profile(
 @router.put("/profile", response_model=schemas.UserResponse)
 async def update_student_profile(
     profile_update: schemas.UserUpdate,
-    current_user: schemas.User = Depends(require_role(["student"])),
+    current_user: schemas.UserResponse = Depends(require_role(["student"])),
     db: AsyncSession = Depends(get_db)
 ):
     """Update current student's profile"""
@@ -40,7 +39,7 @@ async def update_student_profile(
 # Student Classes
 @router.get("/classes", response_model=List[schemas.ClassResponse])
 async def get_student_classes(
-    current_user: schemas.User = Depends(require_role(["student"])),
+    current_user: schemas.UserResponse = Depends(require_role(["student"])),
     db: AsyncSession = Depends(get_db)
 ):
     """Get all classes for current student"""
@@ -54,7 +53,7 @@ async def get_student_classes(
 @router.get("/classes/{class_id}", response_model=schemas.ClassResponse)
 async def get_student_class_details(
     class_id: int,
-    current_user: schemas.User = Depends(require_role(["student"])),
+    current_user: schemas.UserResponse = Depends(require_role(["student"])),
     db: AsyncSession = Depends(get_db)
 ):
     """Get details of a specific class for current student"""
@@ -82,7 +81,7 @@ async def get_student_class_details(
 @router.get("/quizzes", response_model=List[schemas.QuizResponse])
 async def get_student_quizzes(
     class_id: Optional[int] = None,
-    current_user: schemas.User = Depends(require_role(["student"])),
+    current_user: schemas.UserResponse = Depends(require_role(["student"])),
     db: AsyncSession = Depends(get_db),
     pagination: dict = Depends(get_pagination_params)
 ):
@@ -103,7 +102,7 @@ async def get_student_quizzes(
 @router.get("/quizzes/{quiz_id}", response_model=schemas.QuizResponse)
 async def get_quiz_details(
     quiz_id: int,
-    current_user: schemas.User = Depends(require_role(["student"])),
+    current_user: schemas.UserResponse = Depends(require_role(["student"])),
     db: AsyncSession = Depends(get_db)
 ):
     """Get details of a specific quiz"""
@@ -130,7 +129,7 @@ async def get_quiz_details(
 async def submit_quiz_attempt(
     quiz_id: int,
     attempt_data: schemas.QuizAttemptCreate,
-    current_user: schemas.User = Depends(require_role(["student"])),
+    current_user: schemas.UserResponse = Depends(require_role(["student"])),
     db: AsyncSession = Depends(get_db)
 ):
     """Submit a quiz attempt"""
@@ -166,7 +165,7 @@ async def submit_quiz_attempt(
 @router.get("/quizzes/{quiz_id}/attempts", response_model=List[schemas.QuizAttemptResponse])
 async def get_quiz_attempts(
     quiz_id: int,
-    current_user: schemas.User = Depends(require_role(["student"])),
+    current_user: schemas.UserResponse = Depends(require_role(["student"])),
     db: AsyncSession = Depends(get_db)
 ):
     """Get all attempts for a specific quiz by current student"""
@@ -183,7 +182,7 @@ async def get_quiz_attempts(
 @router.get("/attendance", response_model=List[schemas.AttendanceResponse])
 async def get_student_attendance(
     class_id: Optional[int] = None,
-    current_user: schemas.User = Depends(require_role(["student"])),
+    current_user: schemas.UserResponse = Depends(require_role(["student"])),
     db: AsyncSession = Depends(get_db),
     pagination: dict = Depends(get_pagination_params)
 ):
@@ -204,7 +203,7 @@ async def get_student_attendance(
 @router.get("/attendance/summary")
 async def get_student_attendance_summary(
     class_id: Optional[int] = None,
-    current_user: schemas.User = Depends(require_role(["student"])),
+    current_user: schemas.UserResponse = Depends(require_role(["student"])),
     db: AsyncSession = Depends(get_db)
 ):
     """Get attendance summary for current student"""
@@ -221,7 +220,7 @@ async def get_student_attendance_summary(
 @router.get("/grades")
 async def get_student_grades(
     class_id: Optional[int] = None,
-    current_user: schemas.User = Depends(require_role(["student"])),
+    current_user: schemas.UserResponse = Depends(require_role(["student"])),
     db: AsyncSession = Depends(get_db)
 ):
     """Get grades/results for current student"""

@@ -65,6 +65,7 @@ class Token(BaseSchema):
     access_token: str
     refresh_token: str
     token_type: str = "bearer"
+    user: 'UserResponse'
 
 
 class TokenData(BaseSchema):
@@ -177,7 +178,7 @@ class QuizResponse(QuizInDB):
 class QuizQuestionBase(BaseSchema):
     """Base quiz question schema."""
     question_text: str = Field(..., min_length=1)
-    question_type: str = Field(..., regex="^(multiple_choice|true_false|short_answer)$")
+    question_type: str = Field(..., pattern="^(multiple_choice|true_false|short_answer)$")
     options: Optional[List[str]] = None
     correct_answer: str = Field(..., min_length=1)
     explanation: Optional[str] = None
@@ -193,7 +194,7 @@ class QuizQuestionCreate(QuizQuestionBase):
 class QuizQuestionUpdate(BaseSchema):
     """Schema for updating quiz question."""
     question_text: Optional[str] = Field(None, min_length=1)
-    question_type: Optional[str] = Field(None, regex="^(multiple_choice|true_false|short_answer)$")
+    question_type: Optional[str] = Field(None, pattern="^(multiple_choice|true_false|short_answer)$")
     options: Optional[List[str]] = None
     correct_answer: Optional[str] = Field(None, min_length=1)
     explanation: Optional[str] = None

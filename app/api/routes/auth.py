@@ -88,8 +88,9 @@ async def login(
         
         # Update last login
         from datetime import datetime
+        from app.db.schemas import UserUpdate
         await crud.user.update(
-            db, db_obj=user, obj_in={"last_login": datetime.utcnow()}
+            db, db_obj=user, obj_in=UserUpdate(last_login=datetime.utcnow())
         )
         
         logger.info("User logged in successfully", user_id=str(user.id), email=user.email)
@@ -97,7 +98,8 @@ async def login(
         return Token(
             access_token=access_token,
             refresh_token=refresh_token,
-            token_type="bearer"
+            token_type="bearer",
+            user=user
         )
         
     except (InvalidCredentialsException, InactiveUserException):

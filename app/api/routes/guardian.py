@@ -3,9 +3,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Optional
 import structlog
 
-from app.db.database import get_db
 from app.db import crud, schemas
-from app.api.dependencies import get_current_user, require_role, get_pagination_params
+from app.api.dependencies import get_current_user, require_role, get_pagination_params, get_db
 from app.exceptions.custom_exceptions import SMSException
 
 logger = structlog.get_logger()
@@ -14,7 +13,7 @@ router = APIRouter()
 # Guardian Profile Management
 @router.get("/profile", response_model=schemas.UserResponse)
 async def get_guardian_profile(
-    current_user: schemas.User = Depends(require_role(["guardian"])),
+    current_user: schemas.UserResponse = Depends(require_role(["guardian"])),
     db: AsyncSession = Depends(get_db)
 ):
     """Get current guardian's profile"""
@@ -23,7 +22,7 @@ async def get_guardian_profile(
 @router.put("/profile", response_model=schemas.UserResponse)
 async def update_guardian_profile(
     profile_update: schemas.UserUpdate,
-    current_user: schemas.User = Depends(require_role(["guardian"])),
+    current_user: schemas.UserResponse = Depends(require_role(["guardian"])),
     db: AsyncSession = Depends(get_db)
 ):
     """Update current guardian's profile"""
@@ -40,7 +39,7 @@ async def update_guardian_profile(
 # Guardian's Students Management
 @router.get("/students", response_model=List[schemas.UserResponse])
 async def get_guardian_students(
-    current_user: schemas.User = Depends(require_role(["guardian"])),
+    current_user: schemas.UserResponse = Depends(require_role(["guardian"])),
     db: AsyncSession = Depends(get_db)
 ):
     """Get all students under current guardian"""
@@ -54,7 +53,7 @@ async def get_guardian_students(
 @router.get("/students/{student_id}", response_model=schemas.UserResponse)
 async def get_student_details(
     student_id: int,
-    current_user: schemas.User = Depends(require_role(["guardian"])),
+    current_user: schemas.UserResponse = Depends(require_role(["guardian"])),
     db: AsyncSession = Depends(get_db)
 ):
     """Get details of a specific student under current guardian"""
@@ -81,7 +80,7 @@ async def get_student_details(
 @router.get("/students/{student_id}/classes", response_model=List[schemas.ClassResponse])
 async def get_student_classes(
     student_id: int,
-    current_user: schemas.User = Depends(require_role(["guardian"])),
+    current_user: schemas.UserResponse = Depends(require_role(["guardian"])),
     db: AsyncSession = Depends(get_db)
 ):
     """Get all classes for a specific student under current guardian"""
@@ -106,7 +105,7 @@ async def get_student_classes(
 async def get_student_attendance(
     student_id: int,
     class_id: Optional[int] = None,
-    current_user: schemas.User = Depends(require_role(["guardian"])),
+    current_user: schemas.UserResponse = Depends(require_role(["guardian"])),
     db: AsyncSession = Depends(get_db),
     pagination: dict = Depends(get_pagination_params)
 ):
@@ -137,7 +136,7 @@ async def get_student_attendance(
 async def get_student_attendance_summary(
     student_id: int,
     class_id: Optional[int] = None,
-    current_user: schemas.User = Depends(require_role(["guardian"])),
+    current_user: schemas.UserResponse = Depends(require_role(["guardian"])),
     db: AsyncSession = Depends(get_db)
 ):
     """Get attendance summary for a specific student under current guardian"""
@@ -164,7 +163,7 @@ async def get_student_attendance_summary(
 async def get_student_grades(
     student_id: int,
     class_id: Optional[int] = None,
-    current_user: schemas.User = Depends(require_role(["guardian"])),
+    current_user: schemas.UserResponse = Depends(require_role(["guardian"])),
     db: AsyncSession = Depends(get_db)
 ):
     """Get grades/results for a specific student under current guardian"""
@@ -191,7 +190,7 @@ async def get_student_grades(
 async def get_student_quiz_attempts(
     student_id: int,
     class_id: Optional[int] = None,
-    current_user: schemas.User = Depends(require_role(["guardian"])),
+    current_user: schemas.UserResponse = Depends(require_role(["guardian"])),
     db: AsyncSession = Depends(get_db),
     pagination: dict = Depends(get_pagination_params)
 ):
@@ -218,7 +217,7 @@ async def get_student_quiz_attempts(
 # Communication/Messages (placeholder for future implementation)
 @router.get("/messages")
 async def get_guardian_messages(
-    current_user: schemas.User = Depends(require_role(["guardian"])),
+    current_user: schemas.UserResponse = Depends(require_role(["guardian"])),
     db: AsyncSession = Depends(get_db)
 ):
     """Get messages/communications for current guardian"""
@@ -227,7 +226,7 @@ async def get_guardian_messages(
 
 @router.post("/messages")
 async def send_message(
-    current_user: schemas.User = Depends(require_role(["guardian"])),
+    current_user: schemas.UserResponse = Depends(require_role(["guardian"])),
     db: AsyncSession = Depends(get_db)
 ):
     """Send a message to school/teacher"""
@@ -237,7 +236,7 @@ async def send_message(
 # Reports and Analytics
 @router.get("/reports/overview")
 async def get_guardian_overview(
-    current_user: schemas.User = Depends(require_role(["guardian"])),
+    current_user: schemas.UserResponse = Depends(require_role(["guardian"])),
     db: AsyncSession = Depends(get_db)
 ):
     """Get overview report for all students under current guardian"""
@@ -251,7 +250,7 @@ async def get_guardian_overview(
 @router.get("/reports/students/{student_id}/performance")
 async def get_student_performance_report(
     student_id: int,
-    current_user: schemas.User = Depends(require_role(["guardian"])),
+    current_user: schemas.UserResponse = Depends(require_role(["guardian"])),
     db: AsyncSession = Depends(get_db)
 ):
     """Get performance report for a specific student"""

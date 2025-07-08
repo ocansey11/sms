@@ -10,6 +10,7 @@ alembic==1.13.0
 
 # Authentication & Security
 passlib[bcrypt]==1.7.4
+bcrypt==4.0.1
 python-jose[cryptography]==3.3.0
 python-multipart==0.0.6
 
@@ -17,6 +18,7 @@ python-multipart==0.0.6
 python-dotenv==1.0.0
 pydantic==2.5.0
 pydantic-settings==2.1.0
+email-validator==2.1.0
 
 # Testing
 pytest==7.4.3
@@ -30,5 +32,5 @@ mypy==1.7.1
 # Logging
 structlog==23.2.0
 
-# CORS
-python-cors==1.7.0
+# CORS (FastAPI has built-in CORS middleware)
+# python-cors==1.7.0  # This package doesn't exist

@@ -57,11 +57,11 @@ class User(Base):
     
     # Relationships
     taught_classes = relationship("Class", back_populates="teacher")
-    student_classes = relationship("StudentClass", back_populates="student")
-    guardian_students = relationship("GuardianStudent", back_populates="guardian")
+    student_classes = relationship("StudentClass", back_populates="student", foreign_keys="[StudentClass.student_id]")
+    guardian_students = relationship("GuardianStudent", back_populates="guardian", foreign_keys="[GuardianStudent.guardian_id]")
     created_quizzes = relationship("Quiz", back_populates="creator")
-    quiz_attempts = relationship("QuizAttempt", back_populates="student")
-    attendance_records = relationship("AttendanceRecord", back_populates="student")
+    quiz_attempts = relationship("QuizAttempt", back_populates="student", foreign_keys="[QuizAttempt.student_id]")
+    attendance_records = relationship("AttendanceRecord", back_populates="student", foreign_keys="[AttendanceRecord.student_id]")
     
     @property
     def full_name(self) -> str:
