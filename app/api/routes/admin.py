@@ -6,6 +6,7 @@ import structlog
 
 from app.api.dependencies import get_db, require_admin, get_pagination_params, PaginationParams
 from app.db import crud
+from app.db.crud import get_user_statistics
 from app.db.schemas import (
     UserCreate, UserUpdate, UserResponse, ClassCreate, ClassUpdate, ClassResponse,
     APIResponse, PaginatedResponse
@@ -171,17 +172,18 @@ async def get_dashboard_stats(
 ):
     """Get admin dashboard statistics."""
     try:
-        stats = {
-            "total_users": await crud.user.count(db, is_active=True),
-            "total_students": await crud.user.count(db, role="student", is_active=True),
-            "total_teachers": await crud.user.count(db, role="teacher", is_active=True),
-            "total_guardians": await crud.user.count(db, role="guardian", is_active=True),
-            "total_classes": await crud.class_.count(db, is_active=True),
-            "total_quizzes": await crud.quiz.count(db),
+        # Use your existing CRUD function
+        user_stats = await get_user_statistics(db)
+        
+        # Transform to match what your frontend expects
+        return {
+            "total_users": user_stats["total_users"],
+            "total_students": user_stats["role_distribution"].get("student", 0),
+            "total_teachers": user_stats["role_distribution"].get("teacher", 0),
+            "total_guardians": user_stats["role_distribution"].get("guardian", 0),
+            "total_classes": 0,  # Add when you implement class stats
+            "active_teachers": user_stats["role_distribution"].get("teacher", 0)
         }
-        
-        return APIResponse(data=stats)
-        
     except Exception as e:
         logger.error("Failed to get dashboard stats", error=str(e))
         raise HTTPException(
