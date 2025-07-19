@@ -3,11 +3,7 @@ import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import LoginPage from './components/LoginPage';
 import AdminDashboard from './components/AdminDashboard';
-
-const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { isAuthenticated } = useAuth();
-  return isAuthenticated ? <>{children}</> : <Navigate to="/login" />;
-};
+import ProtectedRoute from './components/ProtectedRoute';
 
 const AppContent: React.FC = () => {
   const { user } = useAuth();
@@ -15,30 +11,57 @@ const AppContent: React.FC = () => {
   return (
     <>
       <Routes>
+        {/* Admin Dashboard - Only admins */}
         <Route path="/admin" element={
-          <ProtectedRoute>
+          <ProtectedRoute allowedRoles={['admin']}>
             <AdminDashboard />
           </ProtectedRoute>
         } />
+        
+        {/* Teacher Dashboard - Only teachers */}
         <Route path="/teacher" element={
-          <ProtectedRoute>
-            <div className="p-8">Teacher Dashboard (Coming Soon)</div>
+          <ProtectedRoute allowedRoles={['teacher']}>
+            <div className="p-8">
+              <h1 className="text-2xl font-bold">Teacher Dashboard</h1>
+              <p>Welcome, Teacher!</p>
+            </div>
           </ProtectedRoute>
         } />
+        
+        {/* Student Dashboard - Only students */}
         <Route path="/student" element={
-          <ProtectedRoute>
-            <div className="p-8">Student Dashboard (Coming Soon)</div>
+          <ProtectedRoute allowedRoles={['student']}>
+            <div className="p-8">
+              <h1 className="text-2xl font-bold">Student Dashboard</h1>
+              <p>Welcome, Student!</p>
+            </div>
           </ProtectedRoute>
         } />
+        
+        {/* Guardian Dashboard - Only guardians */}
         <Route path="/guardian" element={
-          <ProtectedRoute>
-            <div className="p-8">Guardian Dashboard (Coming Soon)</div>
+          <ProtectedRoute allowedRoles={['guardian']}>
+            <div className="p-8">
+              <h1 className="text-2xl font-bold">Guardian Dashboard</h1>
+              <p>Welcome, Guardian!</p>
+            </div>
           </ProtectedRoute>
         } />
+        
+        {/* Login page - No protection needed */}
         <Route path="/login" element={<LoginPage />} />
+        
+        {/* Default redirect based on user role */}
+        <Route path="/" element={
+          <ProtectedRoute>
+            <Navigate to={`/${user?.role ?? 'login'}`} replace />
+          </ProtectedRoute>
+        } />
+        
+        {/* Catch all - redirect to user's dashboard */}
         <Route path="*" element={
           <ProtectedRoute>
-            <Navigate to={`/${user?.role ?? 'login'}`} />
+            <Navigate to={`/${user?.role ?? 'login'}`} replace />
           </ProtectedRoute>
         } />
       </Routes>

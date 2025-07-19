@@ -13,7 +13,7 @@ interface AuthContextType {
   user: User | null;
   login: (email: string, password: string) => Promise<void>;
   logout: () => void;
-  isAuthenticated: boolean;
+  isAuthenticated: boolean | null; // ✅ FIXED - Allow null for loading state
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -28,20 +28,33 @@ export const useAuth = () => {
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null); // ✅ Start as loading
   const navigate = useNavigate();
 
   useEffect(() => {
-    // Check for stored auth token on app load
+    console.log('🔍 AuthContext: Checking stored auth on app load...');
     const token = localStorage.getItem('auth_token');
     const userData = localStorage.getItem('user_data');
+    
+    console.log('🔍 Found token:', token ? 'Yes' : 'No');
+    console.log('🔍 Found userData:', userData ? 'Yes' : 'No');
+    
     if (token && userData) {
       try {
-        setUser(JSON.parse(userData));
+        const parsedUser = JSON.parse(userData);
+        console.log('🔍 Parsed user:', parsedUser);
+        setUser(parsedUser);
+        setIsAuthenticated(true);
+        console.log('✅ User restored from localStorage');
       } catch (error) {
-        console.error('Error parsing stored user data:', error);
+        console.error('❌ Error parsing stored user data:', error);
         localStorage.removeItem('auth_token');
         localStorage.removeItem('user_data');
+        setIsAuthenticated(false);
       }
+    } else {
+      console.log('❌ No stored auth found');
+      setIsAuthenticated(false);
     }
   }, []);
 
@@ -60,11 +73,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       const data = await response.json();
-      console.log('Backend response:', data); // Debug log
+      console.log('Backend response:', data);
       
-      // Decode JWT token to get user info
       const tokenPayload = JSON.parse(atob(data.access_token.split('.')[1]));
-      console.log('Token payload:', tokenPayload); // Debug log
+      console.log('Token payload:', tokenPayload);
       
       const user = {
         id: tokenPayload.sub,
@@ -74,15 +86,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         last_name: tokenPayload.last_name || ''
       };
       
-      console.log('Decoded user:', user); // Debug log
+      console.log('Decoded user:', user);
       
-      // Store token and user data
       localStorage.setItem('auth_token', data.access_token);
       localStorage.setItem('user_data', JSON.stringify(user));
       setUser(user);
+      setIsAuthenticated(true);
       
-      // Navigate to role-specific dashboard
-      console.log('Navigating to:', `/${user.role}`); // Debug log
+      console.log('Navigating to:', `/${user.role}`);
       navigate(`/${user.role}`);
       
     } catch (error) {
@@ -92,18 +103,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const logout = () => {
+    setUser(null);
+    setIsAuthenticated(false);
     localStorage.removeItem('auth_token');
     localStorage.removeItem('user_data');
-    setUser(null);
-    navigate('/login'); // Redirect to login page after logout
+    navigate('/login');
   };
 
   return (
-    <AuthContext.Provider value={{
-      user,
-      login,
-      logout,
-      isAuthenticated: !!user,
+    <AuthContext.Provider value={{ 
+      user, 
+      login, 
+      logout, 
+      isAuthenticated // ✅ FIXED - Let null pass through
     }}>
       {children}
     </AuthContext.Provider>
