@@ -26,6 +26,14 @@ async def get_users(
 ):
     """Get all users with pagination and optional role filter."""
     try:
+
+        # Debug logging
+        logger.info(f"Pagination object: {pagination}")
+        logger.info(f"Pagination page: {pagination.page}")
+        logger.info(f"Pagination size: {pagination.size}")
+        logger.info(f"Pagination skip: {getattr(pagination, 'skip', 'NOT FOUND')}")
+
+
         # Get users
         users = await crud.user.get_multi(
             db, 
@@ -38,7 +46,7 @@ async def get_users(
         total = await crud.user.count(db, role=role)
         
         return PaginatedResponse(
-            items=users,
+            items=[UserResponse.model_validate(user) for user in users],
             total=total,
             page=pagination.page,
             size=pagination.size,
@@ -63,7 +71,7 @@ async def create_user(
     try:
         user = await crud.user.create(db, obj_in=user_data)
         logger.info("User created by admin", user_id=str(user.id), created_by=str(current_user.id))
-        return user
+        return UserResponse.model_validate(user)  
         
     except Exception as e:
         logger.error("Failed to create user", error=str(e))
@@ -83,7 +91,7 @@ async def get_user(
     user = await crud.user.get(db, id=user_id)
     if not user:
         raise UserNotFoundException(str(user_id))
-    return user
+    return UserResponse.model_validate(user)  
 
 
 @router.put("/users/{user_id}", response_model=UserResponse)
@@ -100,7 +108,7 @@ async def update_user(
     
     updated_user = await crud.user.update(db, db_obj=user, obj_in=user_update)
     logger.info("User updated by admin", user_id=str(user_id), updated_by=str(current_user.id))
-    return updated_user
+    return UserResponse.model_validate(updated_user)  
 
 
 @router.delete("/users/{user_id}", response_model=APIResponse)

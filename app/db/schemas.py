@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr, Field, validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, validator
 from typing import Optional, List, Dict, Any
 from datetime import datetime, date
 from uuid import UUID
@@ -10,9 +10,10 @@ from app.db.models import UserRole, QuizStatus, AttendanceStatus, AttemptStatus
 # Base schemas
 class BaseSchema(BaseModel):
     """Base schema with common configuration."""
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(
+        from_attributes = True,
         use_enum_values = True
+    )
 
 
 # User schemas
@@ -328,6 +329,11 @@ class PaginationParams(BaseSchema):
     page: int = Field(default=1, ge=1)
     size: int = Field(default=10, ge=1, le=100)
 
+    @property
+    def skip(self) -> int:
+        """Calculate skip value for database queries."""
+        return (self.page - 1) * self.size
+
 
 class PaginatedResponse(BaseSchema):
     """Paginated response schema."""
@@ -336,6 +342,7 @@ class PaginatedResponse(BaseSchema):
     page: int
     size: int
     pages: int
+    model_config = ConfigDict(from_attributes=True)
 
 
 # API Response schemas

@@ -1,18 +1,25 @@
-@import "tailwindcss";  /* v4 syntax - single import instead of 3 @tailwind directives */
-
+@import "tailwindcss";
 
 @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap');
-body {
+
+html, body {
   margin: 0;
-  display: flex;
-  place-items: center;
-  min-width: 320px;
+  padding: 0;
+  width: 100%;
   min-height: 100vh;
+  box-sizing: border-box;
 }
 
+/* Remove the #app styles completely or make them full width */
 #app {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 2rem;
-  text-align: center;
+  width: 100%;           
+  margin: 0;             
+  padding: 0;           
+  text-align: left;      
+  min-height: 100vh;     
+}
+
+/* Global box sizing */
+*, *::before, *::after {
+  box-sizing: border-box;
 }

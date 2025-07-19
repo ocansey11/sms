@@ -4,7 +4,7 @@ import { createApiClient } from '../api/config';
 import Navbar from './Navbar';
 
 
-// Define types for our data
+// Define typess fosr our data
 interface User {
   id: string;
   first_name: string;
@@ -64,11 +64,17 @@ const AdminDashboard: React.FC = () => {
     try {
       setLoading(true);
       const response = await apiClient.get('/admin/users');
-      setUsers(response.data.data || response.data);
+    
+      
+      if (response.data.items) {
+        setUsers(response.data.items);  
+      } else {
+        setUsers(response.data);  
+      }
+      
       setError('');
     } catch (err) {
       setError('Failed to fetch users');
-      console.error('Error fetching users:', err);
     } finally {
       setLoading(false);
     }
@@ -201,7 +207,7 @@ const AdminDashboard: React.FC = () => {
   );
 
   const renderUsersList = () => (
-    <div className="bg-white rounded-lg shadow">
+    <div className="bg-white rounded-lg shadow w-full">
       <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
         <h2 className="text-lg font-semibold text-gray-900">All Users</h2>
         <button 
@@ -229,22 +235,22 @@ const AdminDashboard: React.FC = () => {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
+            <table className="w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Name
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Email
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Role
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Status
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Created At
                   </th>
                 </tr>
@@ -291,7 +297,7 @@ const AdminDashboard: React.FC = () => {
   );
 
   const renderClassesList = () => (
-    <div className="bg-white rounded-lg shadow">
+    <div className="bg-white rounded-lg shadow w-full">
       <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
         <h2 className="text-lg font-semibold text-gray-900">All Classes</h2>
         <button 
@@ -319,22 +325,22 @@ const AdminDashboard: React.FC = () => {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
+            <table className="w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Class Name
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Subject
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Teacher
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Academic Year
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Status
                   </th>
                 </tr>
@@ -382,13 +388,15 @@ const AdminDashboard: React.FC = () => {
     <div className="min-h-screen bg-gray-50">
 
       {/* Main Content */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="w-full px-4 sm:px-6 lg:px-8 py-8">
         {activeView === 'dashboard' && (
           <>
-            {renderDashboard()}
+            <div className="max-w-7xl mx-auto">
+              {renderDashboard()}
+            </div>
             
             {/* Recent Activity */}
-            <div className="mt-8 bg-white rounded-lg shadow">
+            <div className="mt-8 bg-white rounded-lg shadow max-w-7xl mx-auto">
               <div className="px-6 py-4 border-b border-gray-200">
                 <h2 className="text-lg font-semibold text-gray-900">Recent Activity</h2>
               </div>

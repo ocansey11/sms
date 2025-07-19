@@ -4,6 +4,7 @@ import axios from 'axios';
 
 export const createApiClient = () => {
   const token = localStorage.getItem('auth_token');
+  
   return axios.create({
     baseURL: API_BASE,
     headers: {
