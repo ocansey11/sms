@@ -1,4 +1,4 @@
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 from typing import Optional, List, Dict, Any
 from datetime import datetime, date
 from uuid import UUID
@@ -30,7 +30,7 @@ class UserCreate(UserBase):
     """Schema for creating a new user."""
     password: str = Field(..., min_length=8)
     
-    @validator('password')
+    @field_validator('password')
     def validate_password(cls, v):
         if len(v) < 8:
             raise ValueError('Password must be at least 8 characters long')
@@ -359,3 +359,26 @@ class ErrorResponse(BaseSchema):
     message: str
     error_code: Optional[str] = None
     details: Optional[Dict[str, Any]] = None
+
+
+class OrganizationSignUp(BaseModel):
+    """Schema for organization registration."""
+    organization_name: str = Field(..., min_length=2, max_length=100)
+    admin_first_name: str = Field(..., min_length=1, max_length=50)
+    admin_last_name: str = Field(..., min_length=1, max_length=50)
+    admin_email: EmailStr
+    admin_password: str = Field(..., min_length=8)
+
+class TeacherSignUp(BaseModel):
+    """Schema for solo teacher registration."""
+    teacher_first_name: str = Field(..., min_length=1, max_length=50)
+    teacher_last_name: str = Field(..., min_length=1, max_length=50)
+    teacher_email: EmailStr
+    teacher_password: str = Field(..., min_length=8)
+
+class SignUpResponse(BaseModel):
+    """Standard response for sign-up endpoints."""
+    success: bool = True
+    message: str = "Registration successful"
+    user_id: Optional[UUID] = None
+    tenant_id: Optional[UUID] = None

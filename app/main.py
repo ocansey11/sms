@@ -3,10 +3,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import structlog
 import time
+from contextlib import asynccontextmanager
 
 from app.core.config import settings
 from app.db.database import init_db
-from app.api.routes import auth, admin, teacher, student, guardian
+from app.api.routes import auth, admin, teacher, student, guardian, tenant
 from app.exceptions.custom_exceptions import SMSException
 
 # Configure structured logging
@@ -86,11 +87,22 @@ async def log_requests(request: Request, call_next):
 async def health_check():
     return {"status": "healthy", "environment": settings.ENV}
 
-# Initialize database on startup
-@app.on_event("startup")
-async def startup_event():
+# # Initialize database on startup
+# @app.on_event("startup")
+# async def startup_event():
+#     logger.info("Starting up SMS API", environment=settings.ENV)
+#     await init_db()
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup code
     logger.info("Starting up SMS API", environment=settings.ENV)
     await init_db()
+    yield
+    # Shutdown code (optional)
+    logger.info("Shutting down SMS API")
+
+app = FastAPI(lifespan=lifespan)
 
 # Include routers
 app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
@@ -98,7 +110,7 @@ app.include_router(admin.router, prefix="/api/admin", tags=["Admin"])
 app.include_router(teacher.router, prefix="/api/teacher", tags=["Teacher"])
 app.include_router(student.router, prefix="/api/student", tags=["Student"])
 app.include_router(guardian.router, prefix="/api/guardian", tags=["Guardian"])
-
+app.include_router(tenant.router, prefix="/api/tenant", tags=["Tenant"])
 # Root endpoint
 @app.get("/")
 async def root():

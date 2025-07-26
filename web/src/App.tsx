@@ -4,6 +4,8 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import LoginPage from './components/LoginPage';
 import AdminDashboard from './components/AdminDashboard';
 import ProtectedRoute from './components/ProtectedRoute';
+import LandingPage from './components/LandingPage'; 
+import SignUpPage from './components/SignUpPage'; 
 
 const AppContent: React.FC = () => {
   const { user } = useAuth();
@@ -51,12 +53,11 @@ const AppContent: React.FC = () => {
         {/* Login page - No protection needed */}
         <Route path="/login" element={<LoginPage />} />
         
-        {/* Default redirect based on user role */}
-        <Route path="/" element={
-          <ProtectedRoute>
-            <Navigate to={`/${user?.role ?? 'login'}`} replace />
-          </ProtectedRoute>
-        } />
+        {/* Sign up page - No protection needed */}
+        <Route path="/signup" element={<SignUpPage />} />
+        
+        {/* Landing page - public */}
+        <Route path="/" element={<LandingPage />} />
         
         {/* Catch all - redirect to user's dashboard */}
         <Route path="*" element={

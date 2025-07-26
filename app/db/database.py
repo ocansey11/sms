@@ -43,6 +43,9 @@ async def get_async_session() -> AsyncSession:
             await session.close()
 
 
+get_db = get_async_session
+
+
 async def init_db():
     """Initialize database - create tables if they don't exist."""
     try:

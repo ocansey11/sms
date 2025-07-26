@@ -9,12 +9,13 @@ import structlog
 from app.db.models import (
     User, Class, StudentClass, GuardianStudent,
     Quiz, QuizQuestion, QuizAttempt, AttendanceRecord,
-    UserRole, QuizStatus, AttemptStatus, AttendanceStatus
+    UserRole, QuizStatus, AttemptStatus, AttendanceStatus, Tenant
 )
 from app.db.schemas import (
     UserCreate, UserUpdate, ClassCreate, ClassUpdate,
     QuizCreate, QuizUpdate, QuizQuestionCreate, QuizQuestionUpdate,
-    QuizAttemptCreate, QuizAttemptUpdate, AttendanceCreate, AttendanceUpdate
+    QuizAttemptCreate, QuizAttemptUpdate, AttendanceCreate, AttendanceUpdate,
+    OrganizationSignUp, TeacherSignUp
 )
 from app.core.security import security
 from app.exceptions.custom_exceptions import (
@@ -787,3 +788,88 @@ async def get_class_attendance_statistics(db: AsyncSession, class_id: int) -> di
         }
     except Exception:
         return {"total_records": 0, "present_records": 0, "attendance_rate": 0}
+
+async def create_organization_signup(db: AsyncSession, signup: OrganizationSignUp):
+    existing_user = await user.get_by_email(db, email=signup.admin_email)
+    if existing_user:
+        raise UserAlreadyExistsException(signup.admin_email)
+
+    try:
+        # Create tenant first
+        tenant_obj = Tenant(
+            name=signup.organization_name,
+            is_organization=True,
+        )
+        db.add(tenant_obj)
+        await db.flush()
+
+        # Create admin user
+        hashed_password = security.get_password_hash(signup.admin_password)
+        admin_user = User(
+            first_name=signup.admin_first_name,
+            last_name=signup.admin_last_name,
+            email=signup.admin_email,
+            password_hash=hashed_password,
+            role=UserRole.OWNER,
+            tenant_id=tenant_obj.id,
+            is_active=True
+        )
+        db.add(admin_user)
+        await db.flush()
+
+        # Now link owner
+        tenant_obj.owner_user_id = admin_user.id
+        await db.flush()
+
+        await db.refresh(admin_user)
+        await db.refresh(tenant_obj)
+        return admin_user, tenant_obj
+
+    except Exception as e:
+        await db.rollback()
+        raise e
+
+async def create_teacher_signup(db: AsyncSession, signup: TeacherSignUp):
+    """Create a new solo teacher tenant and teacher user in a single transaction."""
+
+    # Check if teacher email already exists
+    existing_user = await user.get_by_email(db, email=signup.teacher_email)
+    if existing_user:
+        raise UserAlreadyExistsException(signup.teacher_email)
+
+    try:
+        # Step 1: Create tenant (owner_user_id will be set after user is created)
+        tenant_obj = Tenant(
+            name=f"{signup.teacher_first_name} {signup.teacher_last_name}",
+            is_organization=False,
+        )
+        db.add(tenant_obj)
+        await db.flush()  # Ensures tenant_obj.id is populated
+
+        # Step 2: Create teacher user
+        hashed_password = security.get_password_hash(signup.teacher_password)
+        teacher_user = User(
+            first_name=signup.teacher_first_name,
+            last_name=signup.teacher_last_name,
+            email=signup.teacher_email,
+            password_hash=hashed_password,
+            role=UserRole.OWNER,
+            tenant_id=tenant_obj.id,
+            is_active=True
+        )
+        db.add(teacher_user)
+        await db.flush()  # Ensures teacher_user.id is available
+
+        # Step 3: Assign the teacher as the tenant owner
+        tenant_obj.owner_user_id = teacher_user.id
+        await db.flush()
+
+        # Step 4: Optionally refresh if returning full objects
+        await db.refresh(teacher_user)
+        await db.refresh(tenant_obj)
+
+        return teacher_user, tenant_obj
+
+    except Exception as e:
+        await db.rollback()
+        raise e

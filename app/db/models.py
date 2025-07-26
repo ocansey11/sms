@@ -1,6 +1,11 @@
 from sqlalchemy import Column, String, Boolean, DateTime, Integer, Numeric, Date, Text, ForeignKey, JSON
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, backref
+
+# Import models for column references in foreign_keys
+import typing
+if typing.TYPE_CHECKING:
+    from app.db.models import StudentClass, GuardianStudent, QuizAttempt, AttendanceRecord, Tenant
 from sqlalchemy.sql import func
 from uuid import uuid4
 from datetime import datetime
@@ -11,6 +16,7 @@ from app.db.database import Base
 
 class UserRole(str, Enum):
     """User role enumeration."""
+    OWNER = "owner"
     ADMIN = "admin"
     TEACHER = "teacher"
     STUDENT = "student"
@@ -54,14 +60,21 @@ class User(Base):
     last_login = Column(DateTime(timezone=True))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    # If a tenant is deleted, set tenant_id to NULL for users
+    tenant_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("tenants.id", ondelete="SET NULL"),
+        nullable=True
+    )
     
-    # Relationships
+    # Relationships - FIX: Specify foreign_keys to resolve ambiguity
     taught_classes = relationship("Class", back_populates="teacher")
-    student_classes = relationship("StudentClass", back_populates="student", foreign_keys="[StudentClass.student_id]")
-    guardian_students = relationship("GuardianStudent", back_populates="guardian", foreign_keys="[GuardianStudent.guardian_id]")
+    student_classes = relationship("StudentClass", back_populates="student")
+    # Relationships that require foreign_keys are assigned after all classes are defined
     created_quizzes = relationship("Quiz", back_populates="creator")
-    quiz_attempts = relationship("QuizAttempt", back_populates="student", foreign_keys="[QuizAttempt.student_id]")
-    attendance_records = relationship("AttendanceRecord", back_populates="student", foreign_keys="[AttendanceRecord.student_id]")
+    guardian_students = relationship("GuardianStudent", back_populates="guardian", foreign_keys='GuardianStudent.guardian_id')
+    quiz_attempts = relationship("QuizAttempt", back_populates="student")
+    attendance_records = relationship("AttendanceRecord", back_populates="student", foreign_keys='AttendanceRecord.student_id')
     
     @property
     def full_name(self) -> str:
@@ -229,3 +242,25 @@ class AttendanceRecord(Base):
     
     def __repr__(self):
         return f"<AttendanceRecord(student_id='{self.student_id}', date='{self.date}', status='{self.status}')>"
+
+
+class Tenant(Base):
+    """Tenant model for multi-tenant SaaS (organization or solo teacher)."""
+    __tablename__ = "tenants"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    name = Column(String(100), nullable=False)
+    is_organization = Column(Boolean, default=True)  # True for org, False for solo teacher
+    # A tenant must always have an owner after creation (enforced in business logic)
+    owner_user_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True
+    )
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    # Relationships that require foreign_keys are assigned after all classes are defined
+
+    def __repr__(self):
+        return f"<Tenant(name='{self.name}', is_organization={self.is_organization})>"
