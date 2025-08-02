@@ -663,6 +663,35 @@ class GuardianChildResponse(GuardianChildBase):
     child: Optional[UserResponse] = None
 
 
+# ---------- ADDITIONAL AUTH SCHEMAS ----------
+class PasswordChangeRequest(BaseSchema):
+    """Password change request schema."""
+    current_password: str
+    new_password: str = Field(..., min_length=8)
+
+
+class UserRoleAssignment(BaseSchema):
+    """User role assignment schema."""
+    user_id: UUID
+    role: str
+    organization_id: Optional[UUID] = None
+    solo_teacher_id: Optional[UUID] = None
+
+
+class UserRoleRevocation(BaseSchema):
+    """User role revocation schema."""
+    user_id: UUID
+    role: str
+    organization_id: Optional[UUID] = None
+
+
+class SupabaseUserSync(BaseSchema):
+    """Supabase user sync schema."""
+    supabase_user_id: str
+    email: EmailStr
+    metadata: Optional[Dict[str, Any]] = None
+
+
 # Forward reference updates for nested relationships
 UserResponse.model_rebuild()
 UserRoleResponse.model_rebuild()
