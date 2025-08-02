@@ -1,187 +1,228 @@
-from typing import List, Optional, Dict, Any
+"""Main Auth Service: Orchestrates local and Supabase auth services."""
+from typing import Optional, Dict, Any, Tuple
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import HTTPException
-import structlog
+from uuid import UUID
 
 from app.db import crud, schemas
-from app.core.security import SecurityManager
-from app.exceptions.custom_exceptions import SMSException
+from app.db.models import User, UserRole, Organization
+from app.services.auth_service_local import LocalAuthService
+from app.services.auth_service_supabase import SupabaseAuthService
+from app.exceptions.custom_exceptions import (
+    UserNotFoundException, UserAlreadyExistsException,
+    ConflictException
+)
 
-logger = structlog.get_logger()
 
 class AuthService:
-    """Authentication and authorization service"""
+    """Main authentication service that orchestrates local and Supabase auth."""
     
     @staticmethod
-    async def authenticate_user(db: AsyncSession, email: str, password: str) -> Optional[schemas.UserResponse]:
-        """Authenticate user with email and password"""
-        try:
-            user = await crud.get_user_by_email(db, email=email)
-            if not user or not SecurityManager.verify_password(password, user.password_hash):
-                return None
-            return user
-        except Exception as e:
-            logger.error("Authentication failed", error=str(e))
+    async def authenticate_user(
+        db: AsyncSession, 
+        email: str, 
+        password: str
+    ) -> Optional[Dict[str, Any]]:
+        """Authenticate user and return token data."""
+        # Try local authentication first
+        user = await LocalAuthService.authenticate_user(db, email, password)
+        if not user:
             return None
+        
+        # Get user roles
+        roles = await LocalAuthService.get_user_roles(db, user.id)
+        
+        # Create token payload
+        token_data = LocalAuthService.create_user_token_data(user, roles)
+        
+        # Create tokens
+        access_token = LocalAuthService.create_access_token(token_data)
+        
+        return {
+            "access_token": access_token,
+            "token_type": "bearer",
+            "user": user,
+            "roles": roles
+        }
     
     @staticmethod
-    async def register_user(db: AsyncSession, user_create: schemas.UserCreate) -> schemas.UserResponse:
-        """Register a new user"""
+    async def register_organization(
+        db: AsyncSession, 
+        signup_data: schemas.OrganizationSignUp
+    ) -> Tuple[User, Organization]:
+        """Register a new organization with admin user."""
         try:
-            # Check if user already exists
-            existing_user = await crud.get_user_by_email(db, email=user_create.email)
-            if existing_user:
-                raise SMSException("User already exists", "USER_EXISTS")
+            # Create organization signup using CRUD
+            admin_user, organization = await crud.create_organization_signup(
+                db, signup_data
+            )
             
-            # Hash password
-            user_create.password = SecurityManager.get_password_hash(user_create.password)
+            # Optionally sync with Supabase if needed
+            # supabase_result = SupabaseAuthService.create_user(
+            #     email=signup_data.admin_email,
+            #     password=signup_data.admin_password,
+            #     user_metadata={
+            #         "first_name": signup_data.admin_first_name,
+            #         "last_name": signup_data.admin_last_name,
+            #         "organization_name": signup_data.organization_name,
+            #         "role": "org_owner"
+            #     }
+            # )
             
-            # Create user
-            user = await crud.create_user(db, user=user_create)
-            logger.info("User registered successfully", user_id=user.id, email=user.email)
-            return user
-        except SMSException:
+            return admin_user, organization
+            
+        except UserAlreadyExistsException:
             raise
         except Exception as e:
-            logger.error("User registration failed", error=str(e))
-            raise SMSException("Registration failed", "REGISTRATION_ERROR")
+            raise HTTPException(status_code=500, detail=f"Organization registration failed: {str(e)}")
+    
+    @staticmethod
+    async def register_solo_teacher(
+        db: AsyncSession, 
+        signup_data: schemas.TeacherSignUp
+    ) -> User:
+        """Register a new solo teacher."""
+        try:
+            # Create teacher signup using CRUD
+            teacher_user = await crud.create_teacher_signup(db, signup_data)
+            
+            # Optionally sync with Supabase if needed
+            # supabase_result = SupabaseAuthService.create_user(
+            #     email=signup_data.teacher_email,
+            #     password=signup_data.teacher_password,
+            #     user_metadata={
+            #         "first_name": signup_data.teacher_first_name,
+            #         "last_name": signup_data.teacher_last_name,
+            #         "role": "solo_teacher"
+            #     }
+            # )
+            
+            return teacher_user
+            
+        except UserAlreadyExistsException:
+            raise
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Teacher registration failed: {str(e)}")
+    
+    @staticmethod
+    async def get_user_profile(
+        db: AsyncSession, 
+        user_id: UUID
+    ) -> Optional[Dict[str, Any]]:
+        """Get complete user profile with roles."""
+        user = await crud.user.get(db, id=user_id)
+        if not user:
+            return None
+        
+        roles = await crud.user_role.get_user_roles(db, user_id)
+        
+        return {
+            "user": user,
+            "roles": roles
+        }
     
     @staticmethod
     async def update_user_password(
-        db: AsyncSession, 
-        user_id: int, 
-        current_password: str, 
+        db: AsyncSession,
+        user_id: UUID,
+        current_password: str,
         new_password: str
     ) -> bool:
-        """Update user password"""
-        try:
-            user = await crud.get_user_by_id(db, user_id=user_id)
-            if not user:
-                raise SMSException("User not found", "USER_NOT_FOUND")
-            
-            # Verify current password
-            if not SecurityManager.verify_password(current_password, user.password_hash):
-                raise SMSException("Current password is incorrect", "INVALID_PASSWORD")
-            
-            # Update password
-            hashed_new_password = SecurityManager.get_password_hash(new_password)
-            await crud.update_user_password(db, user_id=user_id, hashed_password=hashed_new_password)
-            
-            logger.info("Password updated successfully", user_id=user_id)
-            return True
-        except SMSException:
-            raise
-        except Exception as e:
-            logger.error("Password update failed", error=str(e))
-            raise SMSException("Password update failed", "PASSWORD_UPDATE_ERROR")
+        """Update user password."""
+        user = await crud.user.get(db, id=user_id)
+        if not user:
+            raise UserNotFoundException("User not found")
+        
+        # Verify current password
+        if not LocalAuthService.verify_password(current_password, user.password_hash):
+            raise HTTPException(status_code=400, detail="Current password is incorrect")
+        
+        # Hash new password
+        hashed_password = LocalAuthService.get_password_hash(new_password)
+        
+        # Update in database
+        user.password_hash = hashed_password
+        await db.commit()
+        
+        return True
     
     @staticmethod
-    async def deactivate_user(db: AsyncSession, user_id: int) -> bool:
-        """Deactivate a user account"""
-        try:
-            user = await crud.get_user_by_id(db, user_id=user_id)
-            if not user:
-                raise SMSException("User not found", "USER_NOT_FOUND")
-            
-            await crud.deactivate_user(db, user_id=user_id)
-            logger.info("User deactivated", user_id=user_id)
-            return True
-        except SMSException:
-            raise
-        except Exception as e:
-            logger.error("User deactivation failed", error=str(e))
-            raise SMSException("User deactivation failed", "DEACTIVATION_ERROR")
-
-class UserService:
-    """User management service"""
-    
-    @staticmethod
-    async def get_users_by_role(
-        db: AsyncSession, 
-        role: str, 
-        skip: int = 0, 
-        limit: int = 100
-    ) -> List[schemas.UserResponse]:
-        """Get users by role with pagination"""
-        try:
-            users = await crud.get_users_by_role(db, role=role, skip=skip, limit=limit)
-            return users
-        except Exception as e:
-            logger.error("Failed to get users by role", error=str(e))
-            raise SMSException("Failed to retrieve users", "USERS_FETCH_ERROR")
-    
-    @staticmethod
-    async def update_user_profile(
-        db: AsyncSession, 
-        user_id: int, 
-        profile_update: schemas.UserUpdate
-    ) -> schemas.UserResponse:
-        """Update user profile"""
-        try:
-            user = await crud.get_user_by_id(db, user_id=user_id)
-            if not user:
-                raise SMSException("User not found", "USER_NOT_FOUND")
-            
-            updated_user = await crud.update_user(db, user_id=user_id, user_update=profile_update)
-            logger.info("User profile updated", user_id=user_id)
-            return updated_user
-        except SMSException:
-            raise
-        except Exception as e:
-            logger.error("Profile update failed", error=str(e))
-            raise SMSException("Profile update failed", "PROFILE_UPDATE_ERROR")
-    
-    @staticmethod
-    async def get_user_statistics(db: AsyncSession) -> Dict[str, Any]:
-        """Get user statistics"""
-        try:
-            stats = await crud.get_user_statistics(db)
-            return stats
-        except Exception as e:
-            logger.error("Failed to get user statistics", error=str(e))
-            raise SMSException("Failed to retrieve statistics", "STATS_ERROR")
-
-class NotificationService:
-    """Notification service for sending emails, SMS, etc."""
-    
-    @staticmethod
-    async def send_welcome_email(user: schemas.UserResponse) -> bool:
-        """Send welcome email to new user"""
-        try:
-            # This would integrate with email service (SendGrid, AWS SES, etc.)
-            logger.info("Welcome email sent", user_id=user.id, email=user.email)
-            return True
-        except Exception as e:
-            logger.error("Failed to send welcome email", error=str(e))
-            return False
-    
-    @staticmethod
-    async def send_password_reset_email(user: schemas.UserResponse, reset_token: str) -> bool:
-        """Send password reset email"""
-        try:
-            # This would integrate with email service
-            logger.info("Password reset email sent", user_id=user.id, email=user.email)
-            return True
-        except Exception as e:
-            logger.error("Failed to send password reset email", error=str(e))
-            return False
-    
-    @staticmethod
-    async def send_attendance_notification(
-        guardian: schemas.UserResponse, 
-        student: schemas.UserResponse, 
-        attendance_status: str
+    async def check_user_permission(
+        db: AsyncSession,
+        user_id: UUID,
+        required_role: str,
+        organization_id: Optional[UUID] = None
     ) -> bool:
-        """Send attendance notification to guardian"""
-        try:
-            # This would integrate with email/SMS service
-            logger.info(
-                "Attendance notification sent", 
-                guardian_id=guardian.id, 
-                student_id=student.id, 
-                status=attendance_status
-            )
-            return True
-        except Exception as e:
-            logger.error("Failed to send attendance notification", error=str(e))
+        """Check if user has required permission."""
+        return await LocalAuthService.check_user_permission(
+            db, user_id, required_role, organization_id
+        )
+    
+    @staticmethod
+    async def assign_user_role(
+        db: AsyncSession,
+        user_id: UUID,
+        role: str,
+        organization_id: Optional[UUID] = None,
+        solo_teacher_id: Optional[UUID] = None
+    ) -> UserRole:
+        """Assign a role to a user."""
+        # Check if role already exists
+        existing_role = await crud.user_role.user_has_role(
+            db, user_id, role, organization_id
+        )
+        if existing_role:
+            raise ConflictException("User already has this role")
+        
+        # Create new role
+        role_data = {
+            "user_id": user_id,
+            "role": role,
+            "organization_id": organization_id,
+            "solo_teacher_id": solo_teacher_id,
+            "is_active": True
+        }
+        
+        return await crud.user_role.create(db, obj_in=role_data)
+    
+    @staticmethod
+    async def revoke_user_role(
+        db: AsyncSession,
+        user_id: UUID,
+        role: str,
+        organization_id: Optional[UUID] = None
+    ) -> bool:
+        """Revoke a role from a user."""
+        # Find the role
+        roles = await crud.user_role.get_user_roles(db, user_id)
+        target_role = None
+        
+        for user_role in roles:
+            if (user_role.role == role and 
+                user_role.organization_id == organization_id):
+                target_role = user_role
+                break
+        
+        if not target_role:
             return False
+        
+        # Delete the role
+        await crud.user_role.delete(db, id=target_role.id)
+        return True
+    
+    @staticmethod
+    def get_supabase_config() -> Dict[str, str]:
+        """Get Supabase configuration for frontend."""
+        return SupabaseAuthService.get_supabase_config()
+    
+    @staticmethod
+    async def handle_supabase_user_sync(
+        db: AsyncSession,
+        supabase_user_id: str,
+        email: str,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> Optional[User]:
+        """Sync user from Supabase to local database."""
+        return await SupabaseAuthService.sync_user_from_supabase(
+            db, supabase_user_id, email, metadata
+        )
