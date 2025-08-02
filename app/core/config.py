@@ -61,6 +61,11 @@ class Settings(BaseSettings):
     # Session Configuration
     SESSION_EXPIRE_MINUTES: int = 30
     
+    # Supabase Configuration
+    SUPABASE_URL: Optional[str] = None
+    SUPABASE_ANON_KEY: Optional[str] = None
+    SUPABASE_SERVICE_ROLE_KEY: Optional[str] = None
+    
     # Azure Configuration (for production)
     AZURE_STORAGE_CONNECTION_STRING: Optional[str] = None
     AZURE_CONTAINER_NAME: Optional[str] = None
@@ -77,9 +82,7 @@ class Settings(BaseSettings):
     MAX_UPLOAD_SIZE: int = 10 * 1024 * 1024  # 10MB
     ALLOWED_EXTENSIONS: List[str] = [".jpg", ".jpeg", ".png", ".pdf", ".doc", ".docx"]
     
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
+
 
 
 # Create settings instance

@@ -265,3 +265,4 @@ credentials/
 # Test files that might contain sensitive data
 test_*.local.py
 *_test.local.py
+*gpt.md
