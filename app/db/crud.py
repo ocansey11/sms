@@ -4,17 +4,22 @@ from sqlalchemy.orm import selectinload
 from typing import Optional, List, Dict, Any
 from uuid import UUID
 from datetime import date
-import structlog
 
 from app.db.models import (
-    User, Class, StudentClass, GuardianStudent,
-    Quiz, QuizQuestion, QuizAttempt, AttendanceRecord,
-    UserRole, QuizStatus, AttemptStatus, AttendanceStatus, Tenant
+    User, UserRole, Role, Organization, StudentProfile,
+    Course, TeacherCourse, OrgAdminCourseRight,
+    Quiz, QuizQuestion, QuizAttempt, QuestionBank,
+    GuardianChild, StudentEnrollment,
+    UserStatus, QuizStatus, AttemptStatus, EnrollmentStatus, GuardianStatus
 )
 from app.db.schemas import (
-    UserCreate, UserUpdate, ClassCreate, ClassUpdate,
+    UserCreate, UserUpdate, UserRoleCreate, 
+    OrganizationCreate, OrganizationUpdate,
+    CourseCreate, CourseUpdate,
     QuizCreate, QuizUpdate, QuizQuestionCreate, QuizQuestionUpdate,
-    QuizAttemptCreate, QuizAttemptUpdate, AttendanceCreate, AttendanceUpdate,
+    QuizAttemptCreate, QuizAttemptUpdate,
+    StudentEnrollmentCreate, StudentEnrollmentUpdate,
+    QuestionBankCreate, QuestionBankUpdate,
     OrganizationSignUp, TeacherSignUp
 )
 from app.core.security import security
@@ -23,8 +28,6 @@ from app.exceptions.custom_exceptions import (
     ClassNotFoundException, QuizNotFoundException,
     StudentNotEnrolledException, ConflictException
 )
-
-logger = structlog.get_logger()
 
 
 class CRUDBase:
@@ -145,57 +148,57 @@ class CRUDUser(CRUDBase):
         return await self.get_multi(db, skip=skip, limit=limit, role=role)
 
 
-class CRUDClass(CRUDBase):
-    """CRUD operations for Class model."""
+class CRUDCourse(CRUDBase):
+    """CRUD operations for Course model."""
     
-    async def get_with_teacher(self, db: AsyncSession, id: UUID) -> Optional[Class]:
-        """Get class with teacher information."""
+    async def get_with_teachers(self, db: AsyncSession, id: UUID) -> Optional[Course]:
+        """Get course with teacher information."""
         result = await db.execute(
-            select(Class)
-            .options(selectinload(Class.teacher))
-            .where(Class.id == id)
+            select(Course)
+            .options(selectinload(Course.teacher_courses))
+            .where(Course.id == id)
         )
         return result.scalar_one_or_none()
     
-    async def get_by_teacher(self, db: AsyncSession, *, teacher_id: UUID, skip: int = 0, limit: int = 100) -> List[Class]:
-        """Get classes by teacher."""
-        return await self.get_multi(db, skip=skip, limit=limit, teacher_id=teacher_id, is_active=True)
+    async def get_by_organization(self, db: AsyncSession, *, organization_id: UUID, skip: int = 0, limit: int = 100) -> List[Course]:
+        """Get courses by organization."""
+        return await self.get_multi(db, skip=skip, limit=limit, organization_id=organization_id)
     
-    async def create(self, db: AsyncSession, *, obj_in: ClassCreate) -> Class:
-        """Create a new class."""
-        class_data = obj_in.model_dump()
-        return await super().create(db, obj_in=class_data)
+    async def create(self, db: AsyncSession, *, obj_in: CourseCreate) -> Course:
+        """Create a new course."""
+        course_data = obj_in.model_dump()
+        return await super().create(db, obj_in=course_data)
     
-    async def enroll_student(self, db: AsyncSession, *, class_id: UUID, student_id: UUID) -> StudentClass:
-        """Enroll a student in a class."""
+    async def enroll_student(self, db: AsyncSession, *, course_id: UUID, student_id: UUID) -> StudentEnrollment:
+        """Enroll a student in a course."""
         # Check if already enrolled
         existing = await db.execute(
-            select(StudentClass).where(
+            select(StudentEnrollment).where(
                 and_(
-                    StudentClass.class_id == class_id,
-                    StudentClass.student_id == student_id,
-                    StudentClass.is_active == True
+                    StudentEnrollment.course_id == course_id,
+                    StudentEnrollment.student_id == student_id,
+                    StudentEnrollment.status == EnrollmentStatus.ACTIVE
                 )
             )
         )
         if existing.scalar_one_or_none():
-            raise ConflictException("Student is already enrolled in this class")
+            raise ConflictException("Student is already enrolled in this course")
         
-        enrollment = StudentClass(class_id=class_id, student_id=student_id)
+        enrollment = StudentEnrollment(course_id=course_id, student_id=student_id)
         db.add(enrollment)
         await db.commit()
         await db.refresh(enrollment)
         return enrollment
     
-    async def get_enrolled_students(self, db: AsyncSession, *, class_id: UUID) -> List[User]:
-        """Get students enrolled in a class."""
+    async def get_enrolled_students(self, db: AsyncSession, *, course_id: UUID) -> List[User]:
+        """Get students enrolled in a course."""
         result = await db.execute(
             select(User)
-            .join(StudentClass, User.id == StudentClass.student_id)
+            .join(StudentEnrollment, User.id == StudentEnrollment.student_id)
             .where(
                 and_(
-                    StudentClass.class_id == class_id,
-                    StudentClass.is_active == True
+                    StudentEnrollment.course_id == course_id,
+                    StudentEnrollment.status == EnrollmentStatus.ACTIVE
                 )
             )
         )
@@ -313,65 +316,98 @@ class CRUDQuizAttempt(CRUDBase):
         return await super().create(db, obj_in=attempt_data)
 
 
-class CRUDAttendance(CRUDBase):
-    """CRUD operations for AttendanceRecord model."""
+class CRUDOrganization(CRUDBase):
+    """CRUD operations for Organization model."""
     
-    async def get_by_student_and_date_range(
-        self,
-        db: AsyncSession,
-        *,
-        student_id: UUID,
-        start_date: str,
-        end_date: str
-    ) -> List[AttendanceRecord]:
-        """Get attendance records for a student in date range."""
+    async def get_by_name(self, db: AsyncSession, name: str) -> Optional[Organization]:
+        """Get organization by name."""
+        result = await db.execute(select(Organization).where(Organization.name == name))
+        return result.scalar_one_or_none()
+
+
+class CRUDUserRole(CRUDBase):
+    """CRUD operations for UserRole model."""
+    
+    async def get_user_roles(self, db: AsyncSession, user_id: UUID) -> List[UserRole]:
+        """Get all roles for a user."""
         result = await db.execute(
-            select(AttendanceRecord)
-            .where(
-                and_(
-                    AttendanceRecord.student_id == student_id,
-                    AttendanceRecord.date >= start_date,
-                    AttendanceRecord.date <= end_date
-                )
-            )
-            .order_by(desc(AttendanceRecord.date))
+            select(UserRole).where(UserRole.user_id == user_id)
         )
         return result.scalars().all()
     
-    async def get_by_class_and_date(
-        self,
-        db: AsyncSession,
-        *,
-        class_id: UUID,
-        date: str
-    ) -> List[AttendanceRecord]:
-        """Get attendance records for a class on specific date."""
+    async def user_has_role(self, db: AsyncSession, user_id: UUID, role: str, organization_id: Optional[UUID] = None) -> bool:
+        """Check if user has specific role."""
+        query = select(UserRole).where(
+            and_(UserRole.user_id == user_id, UserRole.role == role)
+        )
+        if organization_id:
+            query = query.where(UserRole.organization_id == organization_id)
+        
+        result = await db.execute(query)
+        return result.scalar_one_or_none() is not None
+
+
+class CRUDStudentEnrollment(CRUDBase):
+    """CRUD operations for StudentEnrollment model."""
+    
+    async def get_student_courses(self, db: AsyncSession, student_id: UUID) -> List[StudentEnrollment]:
+        """Get all active enrollments for a student."""
         result = await db.execute(
-            select(AttendanceRecord)
-            .options(selectinload(AttendanceRecord.student))
+            select(StudentEnrollment)
             .where(
                 and_(
-                    AttendanceRecord.class_id == class_id,
-                    AttendanceRecord.date == date
+                    StudentEnrollment.student_id == student_id,
+                    StudentEnrollment.status == EnrollmentStatus.ACTIVE
                 )
             )
         )
         return result.scalars().all()
+
+
+class CRUDQuestionBank(CRUDBase):
+    """CRUD operations for QuestionBank model."""
     
-    async def create(self, db: AsyncSession, *, obj_in: AttendanceCreate, recorded_by: UUID) -> AttendanceRecord:
-        """Create attendance record."""
-        attendance_data = obj_in.model_dump()
-        attendance_data['recorded_by'] = recorded_by
-        return await super().create(db, obj_in=attendance_data)
+    async def get_by_provider(self, db: AsyncSession, organization_id: Optional[UUID] = None, solo_teacher_id: Optional[UUID] = None) -> List[QuestionBank]:
+        """Get questions by provider."""
+        if organization_id:
+            query = select(QuestionBank).where(QuestionBank.organization_id == organization_id)
+        elif solo_teacher_id:
+            query = select(QuestionBank).where(QuestionBank.solo_teacher_id == solo_teacher_id)
+        else:
+            return []
+        
+        result = await db.execute(query)
+        return result.scalars().all()
+
+
+class CRUDGuardianChild(CRUDBase):
+    """CRUD operations for GuardianChild model."""
+    
+    async def get_guardian_children(self, db: AsyncSession, guardian_id: UUID) -> List[GuardianChild]:
+        """Get all children for a guardian."""
+        result = await db.execute(
+            select(GuardianChild)
+            .where(
+                and_(
+                    GuardianChild.guardian_id == guardian_id,
+                    GuardianChild.status == GuardianStatus.ACCEPTED
+                )
+            )
+        )
+        return result.scalars().all()
 
 
 # Create CRUD instances
 user = CRUDUser(User)
-class_ = CRUDClass(Class)
+organization = CRUDOrganization(Organization)
+user_role = CRUDUserRole(UserRole)
+course = CRUDCourse(Course) 
+student_enrollment = CRUDStudentEnrollment(StudentEnrollment)
+question_bank = CRUDQuestionBank(QuestionBank)
+guardian_child = CRUDGuardianChild(GuardianChild)
 quiz = CRUDQuiz(Quiz)
 quiz_question = CRUDQuizQuestion(QuizQuestion)
 quiz_attempt = CRUDQuizAttempt(QuizAttempt)
-attendance = CRUDAttendance(AttendanceRecord)
 
 # Additional convenience functions for API routes
 async def get_user_by_email(db: AsyncSession, email: str) -> Optional[User]:
@@ -433,74 +469,111 @@ async def get_user_statistics(db: AsyncSession) -> dict:
     except Exception:
         return {"total_users": 0, "active_users": 0, "role_distribution": {}}
 
-# Class-related convenience functions
-async def get_class_by_id(db: AsyncSession, class_id: int) -> Optional[Class]:
-    """Get class by ID"""
-    return await class_.get(db, id=class_id)
+# Course-related convenience functions
+async def get_course_by_id(db: AsyncSession, course_id: UUID) -> Optional[Course]:
+    """Get course by ID"""
+    return await course.get(db, id=course_id)
 
-async def get_class_by_name(db: AsyncSession, name: str) -> Optional[Class]:
-    """Get class by name"""
-    result = await db.execute(select(Class).where(Class.name == name))
+async def get_course_by_title(db: AsyncSession, title: str, organization_id: UUID) -> Optional[Course]:
+    """Get course by title within organization"""
+    result = await db.execute(
+        select(Course).where(
+            and_(Course.title == title, Course.organization_id == organization_id)
+        )
+    )
     return result.scalar_one_or_none()
 
-async def create_class(db: AsyncSession, class_create: ClassCreate) -> Class:
-    """Create class"""
-    return await class_.create(db, obj_in=class_create)
+async def create_course(db: AsyncSession, course_create: CourseCreate) -> Course:
+    """Create course"""
+    return await course.create(db, obj_in=course_create)
 
-async def get_student_classes(db: AsyncSession, student_id: int) -> List[Class]:
-    """Get all classes for a student"""
+async def get_student_courses(db: AsyncSession, student_id: UUID) -> List[Course]:
+    """Get all courses for a student"""
     result = await db.execute(
-        select(Class)
-        .join(StudentClass)
-        .where(StudentClass.student_id == student_id)
+        select(Course)
+        .join(StudentEnrollment)
+        .where(
+            and_(
+                StudentEnrollment.student_id == student_id,
+                StudentEnrollment.status == EnrollmentStatus.ACTIVE
+            )
+        )
     )
     return result.scalars().all()
 
-async def get_student_class_enrollment(db: AsyncSession, student_id: int, class_id: int) -> Optional[StudentClass]:
-    """Get student class enrollment"""
+async def get_student_enrollment(db: AsyncSession, student_id: UUID, course_id: UUID) -> Optional[StudentEnrollment]:
+    """Get student course enrollment"""
     result = await db.execute(
-        select(StudentClass)
-        .where(StudentClass.student_id == student_id, StudentClass.class_id == class_id)
+        select(StudentEnrollment)
+        .where(
+            and_(
+                StudentEnrollment.student_id == student_id, 
+                StudentEnrollment.course_id == course_id
+            )
+        )
     )
     return result.scalar_one_or_none()
 
-async def create_student_class_enrollment(db: AsyncSession, student_id: int, class_id: int) -> StudentClass:
-    """Create student class enrollment"""
-    enrollment = StudentClass(student_id=student_id, class_id=class_id)
+async def create_student_enrollment(db: AsyncSession, student_id: UUID, course_id: UUID, source: str = "admin_add") -> StudentEnrollment:
+    """Create student course enrollment"""
+    enrollment = StudentEnrollment(
+        student_id=student_id, 
+        course_id=course_id,
+        source=source
+    )
     db.add(enrollment)
     await db.commit()
     await db.refresh(enrollment)
     return enrollment
 
-async def delete_student_class_enrollment(db: AsyncSession, student_id: int, class_id: int) -> bool:
-    """Delete student class enrollment"""
+async def update_enrollment_status(db: AsyncSession, student_id: UUID, course_id: UUID, status: EnrollmentStatus) -> bool:
+    """Update student enrollment status"""
     result = await db.execute(
-        delete(StudentClass)
-        .where(StudentClass.student_id == student_id, StudentClass.class_id == class_id)
+        select(StudentEnrollment)
+        .where(
+            and_(
+                StudentEnrollment.student_id == student_id,
+                StudentEnrollment.course_id == course_id
+            )
+        )
     )
-    await db.commit()
-    return result.rowcount > 0
+    enrollment = result.scalar_one_or_none()
+    if enrollment:
+        enrollment.status = status
+        await db.commit()
+        return True
+    return False
 
-async def get_class_students(db: AsyncSession, class_id: int) -> List[User]:
-    """Get all students in a class"""
+async def get_course_students(db: AsyncSession, course_id: UUID) -> List[User]:
+    """Get all students in a course"""
     result = await db.execute(
         select(User)
-        .join(StudentClass)
-        .where(StudentClass.class_id == class_id)
+        .join(StudentEnrollment)
+        .where(
+            and_(
+                StudentEnrollment.course_id == course_id,
+                StudentEnrollment.status == EnrollmentStatus.ACTIVE
+            )
+        )
     )
     return result.scalars().all()
 
-async def get_class_statistics(db: AsyncSession, class_id: int) -> dict:
-    """Get class statistics"""
+async def get_course_statistics(db: AsyncSession, course_id: UUID) -> dict:
+    """Get course statistics"""
     try:
         student_count = await db.scalar(
-            select(func.count(StudentClass.student_id))
-            .where(StudentClass.class_id == class_id)
+            select(func.count(StudentEnrollment.student_id))
+            .where(
+                and_(
+                    StudentEnrollment.course_id == course_id,
+                    StudentEnrollment.status == EnrollmentStatus.ACTIVE
+                )
+            )
         )
         
         quiz_count = await db.scalar(
             select(func.count(Quiz.id))
-            .where(Quiz.class_id == class_id)
+            .where(Quiz.course_id == course_id)
         )
         
         return {
@@ -527,12 +600,22 @@ async def create_quiz_question(db: AsyncSession, question: QuizQuestionCreate) -
     """Create quiz question"""
     return await quiz_question.create(db, obj_in=question)
 
-async def get_student_quizzes(db: AsyncSession, student_id: int, class_id: Optional[int] = None, skip: int = 0, limit: int = 100) -> List[Quiz]:
+async def get_student_quizzes(db: AsyncSession, student_id: UUID, course_id: Optional[UUID] = None, skip: int = 0, limit: int = 100) -> List[Quiz]:
     """Get quizzes available to a student"""
-    query = select(Quiz).join(Class).join(StudentClass).where(StudentClass.student_id == student_id)
+    query = (
+        select(Quiz)
+        .join(Course)
+        .join(StudentEnrollment)
+        .where(
+            and_(
+                StudentEnrollment.student_id == student_id,
+                StudentEnrollment.status == EnrollmentStatus.ACTIVE
+            )
+        )
+    )
     
-    if class_id:
-        query = query.where(Quiz.class_id == class_id)
+    if course_id:
+        query = query.where(Quiz.course_id == course_id)
     
     result = await db.execute(query.offset(skip).limit(limit))
     return result.scalars().all()
@@ -569,268 +652,118 @@ async def update_quiz_attempt_score(db: AsyncSession, attempt_id: int, score: fl
     return False
 
 # Guardian-related functions
-async def get_guardian_students(db: AsyncSession, guardian_id: int) -> List[User]:
-    """Get all students under a guardian"""
+async def get_guardian_children(db: AsyncSession, guardian_id: UUID) -> List[User]:
+    """Get all children under a guardian"""
     result = await db.execute(
         select(User)
-        .join(GuardianStudent)
-        .where(GuardianStudent.guardian_id == guardian_id)
+        .join(GuardianChild)
+        .where(
+            and_(
+                GuardianChild.guardian_id == guardian_id,
+                GuardianChild.status == GuardianStatus.ACCEPTED
+            )
+        )
     )
     return result.scalars().all()
 
-async def get_guardian_student_relationship(db: AsyncSession, guardian_id: int, student_id: int) -> Optional[GuardianStudent]:
-    """Get guardian-student relationship"""
+async def get_guardian_child_relationship(db: AsyncSession, guardian_id: UUID, student_id: UUID) -> Optional[GuardianChild]:
+    """Get guardian-child relationship"""
     result = await db.execute(
-        select(GuardianStudent)
-        .where(GuardianStudent.guardian_id == guardian_id, GuardianStudent.student_id == student_id)
+        select(GuardianChild)
+        .where(
+            and_(
+                GuardianChild.guardian_id == guardian_id, 
+                GuardianChild.student_id == student_id
+            )
+        )
     )
     return result.scalar_one_or_none()
 
-async def get_guardian_overview(db: AsyncSession, guardian_id: int) -> dict:
+async def create_guardian_child_relationship(db: AsyncSession, guardian_id: UUID, student_id: UUID, relationship: str = "parent") -> GuardianChild:
+    """Create guardian-child relationship"""
+    guardian_child = GuardianChild(
+        guardian_id=guardian_id,
+        student_id=student_id,
+        relationship=relationship
+    )
+    db.add(guardian_child)
+    await db.commit()
+    await db.refresh(guardian_child)
+    return guardian_child
+
+async def get_guardian_overview(db: AsyncSession, guardian_id: UUID) -> dict:
     """Get overview for guardian"""
     try:
-        students = await get_guardian_students(db, guardian_id)
+        children = await get_guardian_children(db, guardian_id)
         
         overview = {
-            "total_students": len(students),
-            "students": [
+            "total_children": len(children),
+            "children": [
                 {
-                    "id": student.id,
-                    "name": f"{student.first_name} {student.last_name}",
-                    "email": student.email
+                    "id": child.id,
+                    "name": f"{child.first_name} {child.last_name}",
+                    "email": child.email
                 }
-                for student in students
+                for child in children
             ]
         }
         
         return overview
     except Exception:
-        return {"total_students": 0, "students": []}
-
-# Attendance-related functions
-async def get_student_attendance(db: AsyncSession, student_id: int, class_id: Optional[int] = None, skip: int = 0, limit: int = 100) -> List[AttendanceRecord]:
-    """Get student attendance records"""
-    query = select(AttendanceRecord).where(AttendanceRecord.student_id == student_id)
-    
-    if class_id:
-        query = query.where(AttendanceRecord.class_id == class_id)
-    
-    result = await db.execute(query.offset(skip).limit(limit))
-    return result.scalars().all()
-
-async def get_student_attendance_summary(db: AsyncSession, student_id: int, class_id: Optional[int] = None) -> dict:
-    """Get student attendance summary"""
-    try:
-        query = select(AttendanceRecord).where(AttendanceRecord.student_id == student_id)
-        
-        if class_id:
-            query = query.where(AttendanceRecord.class_id == class_id)
-        
-        result = await db.execute(query)
-        records = result.scalars().all()
-        
-        total_days = len(records)
-        present_days = sum(1 for record in records if record.status == 'present')
-        absent_days = total_days - present_days
-        
-        return {
-            "total_days": total_days,
-            "present_days": present_days,
-            "absent_days": absent_days,
-            "attendance_rate": (present_days / total_days * 100) if total_days > 0 else 0
-        }
-    except Exception:
-        return {"total_days": 0, "present_days": 0, "absent_days": 0, "attendance_rate": 0}
-
-async def create_attendance(db: AsyncSession, attendance: AttendanceCreate) -> AttendanceRecord:
-    """Create attendance record"""
-    return await attendance_record.create(db, obj_in=attendance)
-
-async def get_attendance_by_date(db: AsyncSession, student_id: int, class_id: int, date: date) -> Optional[AttendanceRecord]:
-    """Get attendance record by date"""
-    result = await db.execute(
-        select(AttendanceRecord)
-        .where(
-            AttendanceRecord.student_id == student_id,
-            AttendanceRecord.class_id == class_id,
-            AttendanceRecord.date == date
-        )
-    )
-    return result.scalar_one_or_none()
-
-async def update_attendance(db: AsyncSession, attendance_id: int, attendance_update: AttendanceUpdate) -> AttendanceRecord:
-    """Update attendance record"""
-    db_attendance = await attendance_record.get(db, id=attendance_id)
-    return await attendance_record.update(db, db_obj=db_attendance, obj_in=attendance_update)
-
-async def get_attendance_summary(db: AsyncSession, student_id: int, class_id: Optional[int] = None, start_date: Optional[date] = None, end_date: Optional[date] = None) -> dict:
-    """Get attendance summary with date filters"""
-    return await get_student_attendance_summary(db, student_id, class_id)
-
-async def get_class_attendance_report(db: AsyncSession, class_id: int, date: date) -> List[dict]:
-    """Get attendance report for a class on a specific date"""
-    result = await db.execute(
-        select(AttendanceRecord, User)
-        .join(User, AttendanceRecord.student_id == User.id)
-        .where(AttendanceRecord.class_id == class_id, AttendanceRecord.date == date)
-    )
-    
-    return [
-        {
-            "student_id": record.student_id,
-            "student_name": f"{user.first_name} {user.last_name}",
-            "status": record.status,
-            "date": record.date
-        }
-        for record, user in result
-    ]
-
-# Performance and grades functions
-async def get_student_grades(db: AsyncSession, student_id: int, class_id: Optional[int] = None) -> List[dict]:
-    """Get student grades"""
-    query = select(QuizAttempt, Quiz).join(Quiz).where(QuizAttempt.student_id == student_id)
-    
-    if class_id:
-        query = query.where(Quiz.class_id == class_id)
-    
-    result = await db.execute(query)
-    
-    grades = []
-    for attempt, quiz in result:
-        grades.append({
-            "quiz_id": quiz.id,
-            "quiz_title": quiz.title,
-            "score": attempt.score,
-            "max_score": quiz.max_score,
-            "percentage": (attempt.score / quiz.max_score * 100) if quiz.max_score > 0 else 0,
-            "submitted_at": attempt.submitted_at
-        })
-    
-    return grades
-
-async def get_student_performance_report(db: AsyncSession, student_id: int) -> dict:
-    """Get comprehensive student performance report"""
-    try:
-        # Get basic info
-        student = await get_user_by_id(db, student_id)
-        if not student:
-            return {}
-        
-        # Get grades
-        grades = await get_student_grades(db, student_id)
-        
-        # Get attendance
-        attendance = await get_student_attendance_summary(db, student_id)
-        
-        # Get classes
-        classes = await get_student_classes(db, student_id)
-        
-        return {
-            "student_info": {
-                "id": student.id,
-                "name": f"{student.first_name} {student.last_name}",
-                "email": student.email
-            },
-            "grades": grades,
-            "attendance": attendance,
-            "classes": classes
-        }
-    except Exception:
         return {}
 
-async def get_student_quiz_performance(db: AsyncSession, student_id: int) -> dict:
-    """Get student quiz performance statistics"""
-    try:
-        attempts = await get_student_quiz_attempts(db, student_id)
-        
-        if not attempts:
-            return {"total_attempts": 0, "average_score": 0, "best_score": 0}
-        
-        scores = [attempt.score for attempt in attempts if attempt.score is not None]
-        
-        return {
-            "total_attempts": len(attempts),
-            "average_score": sum(scores) / len(scores) if scores else 0,
-            "best_score": max(scores) if scores else 0
-        }
-    except Exception:
-        return {"total_attempts": 0, "average_score": 0, "best_score": 0}
 
-async def get_class_quiz_statistics(db: AsyncSession, class_id: int) -> dict:
-    """Get quiz statistics for a class"""
-    try:
-        quiz_count = await db.scalar(
-            select(func.count(Quiz.id))
-            .where(Quiz.class_id == class_id)
-        )
-        
-        return {"total_quizzes": quiz_count or 0}
-    except Exception:
-        return {"total_quizzes": 0}
-
-async def get_class_attendance_statistics(db: AsyncSession, class_id: int) -> dict:
-    """Get attendance statistics for a class"""
-    try:
-        total_records = await db.scalar(
-            select(func.count(AttendanceRecord.id))
-            .where(AttendanceRecord.class_id == class_id)
-        )
-        
-        present_records = await db.scalar(
-            select(func.count(AttendanceRecord.id))
-            .where(AttendanceRecord.class_id == class_id, AttendanceRecord.status == 'present')
-        )
-        
-        return {
-            "total_records": total_records or 0,
-            "present_records": present_records or 0,
-            "attendance_rate": (present_records / total_records * 100) if total_records > 0 else 0
-        }
-    except Exception:
-        return {"total_records": 0, "present_records": 0, "attendance_rate": 0}
+# Organization and Solo Teacher signup functions
 
 async def create_organization_signup(db: AsyncSession, signup: OrganizationSignUp):
+    """Create organization with admin user"""
     existing_user = await user.get_by_email(db, email=signup.admin_email)
     if existing_user:
         raise UserAlreadyExistsException(signup.admin_email)
 
     try:
-        # Create tenant first
-        tenant_obj = Tenant(
+        # Step 1: Create organization first
+        organization_obj = Organization(
             name=signup.organization_name,
-            is_organization=True,
         )
-        db.add(tenant_obj)
+        db.add(organization_obj)
         await db.flush()
 
-        # Create admin user
-        hashed_password = security.get_password_hash(signup.admin_password)
+        # Step 2: Create admin user
         admin_user = User(
             first_name=signup.admin_first_name,
             last_name=signup.admin_last_name,
             email=signup.admin_email,
-            password_hash=hashed_password,
-            role=UserRole.OWNER,
-            tenant_id=tenant_obj.id,
             is_active=True
         )
         db.add(admin_user)
         await db.flush()
 
-        # Now link owner
-        tenant_obj.owner_user_id = admin_user.id
-        await db.flush()
-
+        # Step 3: Assign the admin as the organization owner
+        organization_obj.owner_user_id = admin_user.id
+        
+        # Step 4: Create user role
+        admin_role = UserRole(
+            user_id=admin_user.id,
+            role="org_owner",
+            organization_id=organization_obj.id
+        )
+        db.add(admin_role)
+        
+        await db.commit()
         await db.refresh(admin_user)
-        await db.refresh(tenant_obj)
-        return admin_user, tenant_obj
+        await db.refresh(organization_obj)
+
+        return admin_user, organization_obj
 
     except Exception as e:
         await db.rollback()
         raise e
+        await db.rollback()
+        raise e
 
 async def create_teacher_signup(db: AsyncSession, signup: TeacherSignUp):
-    """Create a new solo teacher tenant and teacher user in a single transaction."""
+    """Create a new solo teacher user with self-managed profile."""
 
     # Check if teacher email already exists
     existing_user = await user.get_by_email(db, email=signup.teacher_email)
@@ -838,37 +771,28 @@ async def create_teacher_signup(db: AsyncSession, signup: TeacherSignUp):
         raise UserAlreadyExistsException(signup.teacher_email)
 
     try:
-        # Step 1: Create tenant (owner_user_id will be set after user is created)
-        tenant_obj = Tenant(
-            name=f"{signup.teacher_first_name} {signup.teacher_last_name}",
-            is_organization=False,
-        )
-        db.add(tenant_obj)
-        await db.flush()  # Ensures tenant_obj.id is populated
-
-        # Step 2: Create teacher user
-        hashed_password = security.get_password_hash(signup.teacher_password)
+        # Step 1: Create teacher user
         teacher_user = User(
             first_name=signup.teacher_first_name,
             last_name=signup.teacher_last_name,
             email=signup.teacher_email,
-            password_hash=hashed_password,
-            role=UserRole.OWNER,
-            tenant_id=tenant_obj.id,
             is_active=True
         )
         db.add(teacher_user)
-        await db.flush()  # Ensures teacher_user.id is available
-
-        # Step 3: Assign the teacher as the tenant owner
-        tenant_obj.owner_user_id = teacher_user.id
         await db.flush()
 
-        # Step 4: Optionally refresh if returning full objects
+        # Step 2: Create user role as solo teacher
+        teacher_role = UserRole(
+            user_id=teacher_user.id,
+            role="solo_teacher",
+            solo_teacher_id=teacher_user.id  # self-reference
+        )
+        db.add(teacher_role)
+        
+        await db.commit()
         await db.refresh(teacher_user)
-        await db.refresh(tenant_obj)
 
-        return teacher_user, tenant_obj
+        return teacher_user
 
     except Exception as e:
         await db.rollback()
